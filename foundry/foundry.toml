@@ -8,3 +8,6 @@ libs = ["lib"]
 
 [fmt]
 line_length = 80
+
+# foundry.toml
+dotenv = ".env"
