@@ -79,7 +79,8 @@ contract UniswapV2SwapTest is Test {
         uint256 amountOut = 0.1 * 1e18;
         uint256 amountInMax = 1e18;
 
-        // Write your code here
+        vm.prank(user);
+        // Input token amount and all subsequent output token amounts
         uint256[] memory amounts = router.swapTokensForExactTokens({
             amountOut: amountOut,
             amountInMax: amountInMax,
