@@ -28,6 +28,7 @@ contract UniswapV2FactoryTest is Test {
         // Write your code here
         // Don’t change any other code
         address pair;
+        pair = factory.createPair(address(token), WETH);
 
         address token0 = IUniswapV2Pair(pair).token0();
         address token1 = IUniswapV2Pair(pair).token1();
