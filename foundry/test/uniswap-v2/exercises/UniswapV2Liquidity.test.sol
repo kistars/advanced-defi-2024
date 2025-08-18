@@ -81,7 +81,7 @@ contract UniswapV2LiquidityTest is Test {
         // Exercise - Remove liquidity from DAI / WETH pool
         // Write your code here
         // Don’t change any other code
-        (uint amountA, uint amountB)=router.removeLiquidity({
+        (uint256 amountA, uint256 amountB) = router.removeLiquidity({
             tokenA: DAI,
             tokenB: WETH,
             liquidity: liquidity,
