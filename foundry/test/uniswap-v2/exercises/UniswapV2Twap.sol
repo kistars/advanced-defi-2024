@@ -43,9 +43,8 @@ contract UniswapV2Twap {
         price0CumulativeLast = pair.price0CumulativeLast();
         price1CumulativeLast = pair.price1CumulativeLast();
         // 4. Call pair.getReserve to get last timestamp the reserves were updated
-        (,, uint32 blockTimestampLast) = pair.getReserves();
         //    and store it into the state variable updatedAt
-        updatedAt = blockTimestampLast;
+        (,, updatedAt) = pair.getReserves();
     }
 
     // Exercise 2
@@ -56,15 +55,12 @@ contract UniswapV2Twap {
         returns (uint256 price0Cumulative, uint256 price1Cumulative)
     {
         // 1. Get latest cumulative prices from the pair contract
-        uint256 cPrice0 = pair.price0CumulativeLast();
-        uint256 cPrice1 = pair.price1CumulativeLast();
+        price0Cumulative = pair.price0CumulativeLast();
+        price1Cumulative = pair.price1CumulativeLast();
 
         // If current block timestamp > last timestamp reserves were updated,
         // calculate cumulative prices until current time.
         // Otherwise return latest cumulative prices retrieved from the pair contract.
-        if (block.timestamp > updatedAt) {} else {
-            return (cPrice0, cPrice1);
-        }
 
         // 2. Get reserves and last timestamp the reserves were updated from
         //    the pair contract
@@ -83,8 +79,10 @@ contract UniswapV2Twap {
                 //    - Use FixedPoint.fraction to calculate spot price.
                 //    - FixedPoint.fraction returns UQ112x112, so cast it into uint256.
                 //    - Multiply spot price by time elapsed
-                price0Cumulative += uint256(reserve0.fraction(reserve1)._x) * dt;
-                price1Cumulative += uint256(reserve1.fraction(reserve0)._x) * dt;
+                price0Cumulative +=
+                    uint256(FixedPoint.fraction(reserve1, reserve0)._x) * dt;
+                price1Cumulative +=
+                    uint256(FixedPoint.fraction(reserve0, reserve1)._x) * dt;
             }
         }
     }
@@ -115,10 +113,10 @@ contract UniswapV2Twap {
             //    - TWAP = (current cumulative price - last cumulative price) / dt
             //    - Cast TWAP into uint224 and then into FixedPoint.uq112x112
             price0Avg = FixedPoint.uq112x112(
-                (price0Cumulative - price0CumulativeLast).fraction(dt)._x
+                uint224((price0Cumulative - price0CumulativeLast) / dt)
             );
             price1Avg = FixedPoint.uq112x112(
-                (price1Cumulative - price1CumulativeLast).fraction(dt)._x
+                uint224((price1Cumulative - price1CumulativeLast) / dt)
             );
         }
 
@@ -150,9 +148,9 @@ contract UniswapV2Twap {
             //   tokenIn = WETH
             //   amountIn = 2
             //   amountOut = price0Avg * amountIn = 4000 USDC
-            amountOut = price0Avg.mul(amountIn)._x;
+            amountOut = FixedPoint.mul(price0Avg, amountIn).decode144();
         } else {
-            amountOut = price1Avg.mul(amountIn)._x;
+            amountOut = FixedPoint.mul(price1Avg, amountIn).decode144();
         }
     }
 }
