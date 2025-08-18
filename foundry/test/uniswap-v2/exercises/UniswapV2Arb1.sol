@@ -23,6 +23,40 @@ contract UniswapV2Arb1 {
         uint256 minProfit;
     }
 
+    // arbitrage
+    function _swap(SwapParams memory params)
+        private
+        returns (uint256 amountOut)
+    {
+        // swap router1
+        IERC20(params.tokenIn).approve(params.router0, params.amountIn);
+        address[] memory path = new address[](2);
+        path[0] = params.tokenIn;
+        path[1] = params.tokenOut;
+        uint256[] memory amounts = IUniswapV2Router02(params.router0)
+            .swapExactTokensForTokens({
+            amountIn: params.amountIn,
+            amountOutMin: 0,
+            path: path,
+            to: address(this),
+            deadline: block.timestamp
+        });
+
+        // swap router1
+        IERC20(params.tokenOut).approve(params.router1, amounts[1]);
+        path[0] = params.tokenOut;
+        path[1] = params.tokenIn;
+        amounts = IUniswapV2Router02(params.router1).swapExactTokensForTokens({
+            amountIn: amounts[1],
+            amountOutMin: params.amountIn,
+            path: path,
+            to: address(this),
+            deadline: block.timestamp
+        });
+
+        amountOut = amounts[1];
+    }
+
     // Exercise 1
     // - Execute an arbitrage between router0 and router1
     // - Pull tokenIn from msg.sender
@@ -33,36 +67,10 @@ contract UniswapV2Arb1 {
         IERC20(params.tokenIn).transferFrom(
             msg.sender, address(this), params.amountIn
         );
-        // swap router0
-        address[] memory path = new address[](2);
-        path[0] = params.tokenIn;
-        path[1] = params.tokenOut;
-        uint256[] memory amounts1 = IUniswapV2Router02(params.router0)
-            .swapExactTokensForTokens({
-            amountIn: params.amountIn,
-            amountOutMin: 1,
-            path: path,
-            to: address(this),
-            deadline: block.timestamp
-        });
-        require(amounts1.length == 2, "invalid amounts length");
-
-        // swap router1
-        path[0] = params.tokenOut;
-        path[1] = params.tokenIn;
-        uint256[] memory amounts2 = IUniswapV2Router02(params.router1)
-            .swapExactTokensForTokens({
-            amountIn: amounts1[1],
-            amountOutMin: 1,
-            path: path,
-            to: address(this),
-            deadline: block.timestamp
-        });
-
-        uint256 profit = amounts2[1] - params.amountIn;
-        require(profit > params.minProfit, "less profit");
-
-        IERC20(params.tokenIn).transfer(msg.sender, params.amountIn + profit);
+        uint256 amountOut = _swap(params);
+        require(amountOut - params.amountIn >= params.minProfit, "profit < min");
+        // tranfer to msg.sender
+        IERC20(params.tokenIn).transfer(msg.sender, amountOut);
     }
 
     // Exercise 2
@@ -82,7 +90,9 @@ contract UniswapV2Arb1 {
         (uint256 amount0Out, uint256 amount1Out) = isToken0
             ? (params.amountIn, uint256(0))
             : (uint256(0), params.amountIn);
-        bytes memory data = abi.encode(params.tokenOut, msg.sender);
+
+        bytes memory data = abi.encode(msg.sender, pair, params);
+
         IUniswapV2Pair(pair).swap({
             amount0Out: amount0Out,
             amount1Out: amount1Out,
@@ -101,19 +111,22 @@ contract UniswapV2Arb1 {
         // Don’t change any other code
         require(sender == address(this), "invalid sender");
 
-        (address token, address caller) = abi.decode(data, (address, address));
+        (address caller, address pair, SwapParams memory params) =
+            abi.decode(data, (address, address, SwapParams));
 
-        require(amount0Out > 0 || amount1Out > 0, "invalid amount out");
-        if (amount0Out > 0 && amount1Out > 0) {
-            revert("both greater than 0");
-        }
-        uint256 amount = amount0Out > 0 ? amount0Out : amount1Out;
+        require(msg.sender == pair, "invalid pair sender");
+
+        uint256 amountOut = _swap(params);
 
         // fee
-        uint256 fee = amount * 3 / 997 + 1;
-        uint256 amountRepay = amount + fee;
+        uint256 fee = params.amountIn * 3 / 997 + 1;
+        uint256 amountRepay = params.amountIn + fee;
 
-        IERC20(token).transferFrom(caller, address(this), fee);
-        IERC20(token).transfer(address(caller), amountRepay);
+        uint256 profit = amountOut - amountRepay;
+        require(profit >= params.minProfit, "profit < min");
+
+        IERC20(params.tokenIn).transfer(address(pair), amountRepay);
+        // transfer profit
+        IERC20(params.tokenIn).transfer(caller, profit);
     }
 }
