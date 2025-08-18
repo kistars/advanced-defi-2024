@@ -30,6 +30,39 @@ contract UniswapV2Arb1 {
     function swap(SwapParams calldata params) external {
         // Write your code here
         // Don’t change any other code
+        IERC20(params.tokenIn).transferFrom(
+            msg.sender, address(this), params.amountIn
+        );
+        // swap router0
+        address[] memory path = new address[](2);
+        path[0] = params.tokenIn;
+        path[1] = params.tokenOut;
+        uint256[] memory amounts1 = IUniswapV2Router02(params.router0)
+            .swapExactTokensForTokens({
+            amountIn: params.amountIn,
+            amountOutMin: 1,
+            path: path,
+            to: address(this),
+            deadline: block.timestamp
+        });
+        require(amounts1.length == 2, "invalid amounts length");
+
+        // swap router1
+        path[0] = params.tokenOut;
+        path[1] = params.tokenIn;
+        uint256[] memory amounts2 = IUniswapV2Router02(params.router1)
+            .swapExactTokensForTokens({
+            amountIn: amounts1[1],
+            amountOutMin: 1,
+            path: path,
+            to: address(this),
+            deadline: block.timestamp
+        });
+
+        uint256 profit = amounts2[1] - params.amountIn;
+        require(profit > params.minProfit, "less profit");
+
+        IERC20(params.tokenIn).transfer(msg.sender, params.amountIn + profit);
     }
 
     // Exercise 2
@@ -46,6 +79,16 @@ contract UniswapV2Arb1 {
     {
         // Write your code here
         // Don’t change any other code
+        (uint256 amount0Out, uint256 amount1Out) = isToken0
+            ? (params.amountIn, uint256(0))
+            : (uint256(0), params.amountIn);
+        bytes memory data = abi.encode(params.tokenOut, msg.sender);
+        IUniswapV2Pair(pair).swap({
+            amount0Out: amount0Out,
+            amount1Out: amount1Out,
+            to: address(this),
+            data: data
+        });
     }
 
     function uniswapV2Call(
@@ -56,5 +99,21 @@ contract UniswapV2Arb1 {
     ) external {
         // Write your code here
         // Don’t change any other code
+        require(sender == address(this), "invalid sender");
+
+        (address token, address caller) = abi.decode(data, (address, address));
+
+        require(amount0Out > 0 || amount1Out > 0, "invalid amount out");
+        if (amount0Out > 0 && amount1Out > 0) {
+            revert("both greater than 0");
+        }
+        uint256 amount = amount0Out > 0 ? amount0Out : amount1Out;
+
+        // fee
+        uint256 fee = amount * 3 / 997 + 1;
+        uint256 amountRepay = amount + fee;
+
+        IERC20(token).transferFrom(caller, address(this), fee);
+        IERC20(token).transfer(address(caller), amountRepay);
     }
 }
